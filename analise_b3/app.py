@@ -107,19 +107,113 @@ try:
         '1d': 'Diário'
     }
     st.subheader(f"Gráfico de Candlestick ({intervalo_nome[intervalo_velas]})")
-    fig = go.Figure(data=[go.Candlestick(x=dados.index,
+    fig = go.Figure(data=[go.Candlestick(
+                x=dados.index,
                 open=dados['Open'],
                 high=dados['High'],
                 low=dados['Low'],
-                close=dados['Close'])])
+                close=dados['Close'],
+                name='OHLC',
+                text=[f"Data: {index}<br>" +
+                      f"Abertura: R$ {open:.2f}<br>" +
+                      f"Máxima: R$ {high:.2f}<br>" +
+                      f"Mínima: R$ {low:.2f}<br>" +
+                      f"Fechamento: R$ {close:.2f}"
+                      for index, open, high, low, close in zip(
+                          dados.index,
+                          dados['Open'],
+                          dados['High'],
+                          dados['Low'],
+                          dados['Close']
+                      )],
+                hoverinfo='text'
+    )])
     
+    # Configuração do layout melhorado
     fig.update_layout(
         template='plotly_dark',
-        xaxis_rangeslider_visible=False,
-        height=600
+        xaxis_rangeslider_visible=True,  # Habilitando o rangeslider
+        height=600,
+        dragmode='pan',  # Alterado para pan (arrastar) como padrão
+        xaxis=dict(
+            type='date',
+            rangeslider=dict(visible=True, thickness=0.05),
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1D", step="day", stepmode="backward"),
+                    dict(count=7, label="7D", step="day", stepmode="backward"),
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(count=6, label="6M", step="month", stepmode="backward"),
+                    dict(count=1, label="1A", step="year", stepmode="backward"),
+                    dict(step="all", label="Tudo")
+                ]),
+                font=dict(color="white"),
+                bgcolor="rgb(48, 48, 48)",
+                activecolor="rgb(65, 65, 65)"
+            )
+        ),
+        yaxis=dict(
+            title="Preço (R$)",
+            tickformat='.2f',
+            tickprefix='R$ ',
+            fixedrange=False  # Permite zoom no eixo Y
+        ),
+        # Adicionando uma grade mais suave
+        xaxis_gridcolor='rgba(128, 128, 128, 0.1)',
+        yaxis_gridcolor='rgba(128, 128, 128, 0.1)',
+        plot_bgcolor='rgba(0, 0, 0, 0)',
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        # Configurando as margens
+        margin=dict(l=50, r=50, t=50, b=50),
+        showlegend=True,  # Mostra a legenda
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        ),
+        # Adicionando botões de modo de interação
+        modebar_add=[
+            'drawline',
+            'drawopenpath',
+            'drawclosedpath',
+            'drawcircle',
+            'drawrect',
+            'eraseshape'
+        ]
     )
+
+    # Configurações adicionais para melhor interatividade
+    config = {
+        'modeBarButtonsToAdd': [
+            'drawline',
+            'drawopenpath',
+            'drawclosedpath',
+            'drawcircle',
+            'drawrect',
+            'eraseshape'
+        ],
+        'modeBarButtons': [
+            ['zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
+            ['toImage'],
+            ['zoom3d', 'pan3d', 'resetCameraDefault3d', 'resetCameraLastSave3d'],
+            ['hoverClosestCartesian', 'hoverCompareCartesian']
+        ],
+        'scrollZoom': True,
+        'displaylogo': False,
+        'toImageButtonOptions': {
+            'format': 'png',
+            'filename': f'{acao_selecionada}_chart',
+            'height': 600,
+            'width': 1200,
+            'scale': 2
+        },
+        'displayModeBar': True,  # Sempre mostra a barra de ferramentas
+        'doubleClick': 'reset+autosize'  # Duplo clique reseta o zoom
+    }
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=config)
 
     # Análise de retornos
     st.subheader("Análise de Retornos")
@@ -139,14 +233,33 @@ try:
             f"{(retornos.std() * 100):.2f}%"
         )
 
-    # Volume
+    # Volume com melhorias visuais também
     st.subheader("Volume de Negociação")
-    fig_volume = go.Figure(data=[go.Bar(x=dados.index, y=dados['Volume'])])
+    fig_volume = go.Figure(data=[
+        go.Bar(
+            x=dados.index, 
+            y=dados['Volume'],
+            name='Volume',
+            hovertemplate=
+            "<b>Data</b>: %{x}<br>" +
+            "<b>Volume</b>: %{y:,.0f}<br>" +
+            "<extra></extra>"
+        )
+    ])
+    
     fig_volume.update_layout(
         template='plotly_dark',
-        height=400
+        height=250,
+        xaxis_rangeslider_visible=False,
+        yaxis=dict(title="Volume"),
+        xaxis_gridcolor='rgba(128, 128, 128, 0.1)',
+        yaxis_gridcolor='rgba(128, 128, 128, 0.1)',
+        plot_bgcolor='rgba(0, 0, 0, 0)',
+        paper_bgcolor='rgba(0, 0, 0, 0)',
+        margin=dict(l=50, r=50, t=50, b=50),
     )
-    st.plotly_chart(fig_volume, use_container_width=True)
+    
+    st.plotly_chart(fig_volume, use_container_width=True, config={'displaylogo': False})
 
 except Exception as e:
     st.error(f"Erro ao carregar dados: {str(e)}")
