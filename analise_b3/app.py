@@ -47,13 +47,13 @@ periodo = st.sidebar.selectbox(
 # Intervalo das velas
 intervalo_velas = st.sidebar.selectbox(
     "Intervalo das velas:",
-    options=['1d', '1h', '5d', '1wk', '1mo'],
+    options=['5m', '15m', '1h', '3h', '1d'],
     format_func=lambda x: {
-        '1d': 'Diário',
+        '5m': '5 Minutos',
+        '15m': '15 Minutos',
         '1h': '1 Hora',
-        '5d': '5 Dias',
-        '1wk': 'Semanal',
-        '1mo': 'Mensal'
+        '3h': '3 Horas',
+        '1d': 'Diário'
     }[x]
 )
 
@@ -100,11 +100,11 @@ try:
 
     # Gráfico de candlestick
     intervalo_nome = {
-        '1d': 'Diário',
+        '5m': 'Cinco Minutos',
+        '15m': 'Quinze Minutos',
         '1h': 'Uma Hora',
-        '5d': '5 Dias',
-        '1wk': 'Semanal',
-        '1mo': 'Mensal'
+        '3h': 'Três Horas',
+        '1d': 'Diário'
     }
     st.subheader(f"Gráfico de Candlestick ({intervalo_nome[intervalo_velas]})")
     fig = go.Figure(data=[go.Candlestick(x=dados.index,
