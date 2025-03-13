@@ -171,39 +171,69 @@ def calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
 
 @st.cache_data
 def detectar_padroes_candlestick(dados):
-    """Detecta padrões de candlestick no DataFrame"""
+    """Detecta padrões de candlestick usando definições matemáticas rigorosas"""
     df = dados.copy()
     
-    # Funções auxiliares para cálculo de tamanhos
-    def body_size(row):
-        return abs(row['Close'] - row['Open'])
+    # Calculando médias móveis para contexto de tendência
+    df['MM20'] = ta.trend.sma_indicator(df['Close'], window=20)
+    df['MM50'] = ta.trend.sma_indicator(df['Close'], window=50)
     
-    def upper_shadow(row):
-        return row['High'] - max(row['Open'], row['Close'])
+    # Tendências
+    df['tendencia_alta'] = df['MM20'] > df['MM50']
+    df['tendencia_baixa'] = df['MM20'] < df['MM50']
     
-    def lower_shadow(row):
-        return min(row['Open'], row['Close']) - row['Low']
+    # Cálculos básicos para cada candle
+    df['body'] = abs(df['Close'] - df['Open'])
+    df['upper_wick'] = df.apply(lambda x: x['High'] - max(x['Open'], x['Close']), axis=1)
+    df['lower_wick'] = df.apply(lambda x: min(x['Open'], x['Close']) - x['Low'], axis=1)
+    df['range_total'] = df['High'] - df['Low']
     
-    def total_size(row):
-        return row['High'] - row['Low']
+    # Calculando percentis para definição de corpos longos e curtos
+    corpo_70_percentil = df['body'].quantile(0.7)
+    corpo_30_percentil = df['body'].quantile(0.3)
     
-    # Calculando tamanhos para cada vela
-    df['body_size'] = df.apply(body_size, axis=1)
-    df['upper_shadow'] = df.apply(upper_shadow, axis=1)
-    df['lower_shadow'] = df.apply(lower_shadow, axis=1)
-    df['total_size'] = df.apply(total_size, axis=1)
+    # Doji
+    df['doji'] = (
+        (df['body'] <= 0.05 * df['range_total']) &  # Corpo muito pequeno
+        (df['upper_wick'] >= 2 * df['body']) &      # Sombras significativas
+        (df['lower_wick'] >= 2 * df['body'])
+    )
     
-    # Padrões de reversão
-    df['doji'] = (df['body_size'] <= df['total_size'] * 0.1) & (df['upper_shadow'] > 0) & (df['lower_shadow'] > 0)
-    df['hammer'] = (df['lower_shadow'] > 2 * df['body_size']) & (df['upper_shadow'] < df['body_size'])
-    df['shooting_star'] = (df['upper_shadow'] > 2 * df['body_size']) & (df['lower_shadow'] < df['body_size'])
+    # Hammer (em tendência de baixa)
+    df['hammer'] = (
+        (df['lower_wick'] >= 2 * df['body']) &                          # Sombra inferior longa
+        (df['upper_wick'] <= 0.1 * df['range_total']) &                # Sombra superior pequena
+        (df.apply(lambda x: min(x['Open'], x['Close']) >               # Corpo na metade superior
+                 (x['High'] + x['Low'])/2 - 0.3*(x['High'] - x['Low']), axis=1)) &
+        df['tendencia_baixa'] &                                        # Confirmação de tendência
+        df['Close'].shift(1).gt(df['Close'].shift(2))                 # Candle anterior mais baixo
+    )
     
-    # Padrões de continuidade
-    df['bullish_marubozu'] = (df['Close'] > df['Open']) & (df['body_size'] > df['total_size'] * 0.8)
-    df['bearish_marubozu'] = (df['Close'] < df['Open']) & (df['body_size'] > df['total_size'] * 0.8)
+    # Shooting Star (em tendência de alta)
+    df['shooting_star'] = (
+        (df['upper_wick'] >= 2 * df['body']) &                         # Sombra superior longa
+        (df['lower_wick'] <= 0.1 * df['range_total']) &               # Sombra inferior pequena
+        (df.apply(lambda x: max(x['Open'], x['Close']) <              # Corpo na metade inferior
+                 (x['High'] + x['Low'])/2 + 0.3*(x['High'] - x['Low']), axis=1)) &
+        df['tendencia_alta']                                          # Em tendência de alta
+    )
     
-    # Padrões de indecisão
-    df['spinning_top'] = (df['body_size'] <= df['total_size'] * 0.3) & (df['upper_shadow'] > 0) & (df['lower_shadow'] > 0)
+    # Marubozu (velas sem sombras)
+    df['bullish_marubozu'] = (
+        (df['Close'] > df['Open']) &                                   # Vela de alta
+        (df['body'] > corpo_70_percentil) &                           # Corpo longo
+        (df['upper_wick'] <= 0.05 * df['range_total']) &             # Sem sombras superiores
+        (df['lower_wick'] <= 0.05 * df['range_total'])               # Sem sombras inferiores
+    )
+    
+    df['bearish_marubozu'] = (
+        (df['Close'] < df['Open']) &                                   # Vela de baixa
+        (df['body'] > corpo_70_percentil) &                           # Corpo longo
+        (df['upper_wick'] <= 0.05 * df['range_total']) &             # Sem sombras superiores
+        (df['lower_wick'] <= 0.05 * df['range_total'])               # Sem sombras inferiores
+    )
+    
+    # Spinning Top (removido pois era muito genérico)
     
     return df
 
@@ -388,23 +418,7 @@ try:
                     name='Bearish Marubozu',
                     showlegend=False
                 ))
-            if dados.loc[idx, 'spinning_top']:
-                fig.add_trace(go.Scatter(
-                    x=[idx],
-                    y=[dados.loc[idx, 'High']],
-                    mode='markers+text',
-                    marker=dict(
-                        symbol='square',
-                        size=10,
-                        color='yellow',
-                        line=dict(color='black', width=1)
-                    ),
-                    text='ST',
-                    textposition='top center',
-                    name='Spinning Top',
-                    showlegend=False
-                ))
-        
+    
         # Adicionar legenda para os padrões
         st.subheader("Padrões de Candlestick Detectados")
         col1, col2, col3 = st.columns(3)
@@ -422,7 +436,9 @@ try:
         
         with col3:
             st.markdown("**Padrões de Indecisão**")
-            st.markdown("⬜ ST - Spinning Top: Indecisão entre compradores e vendedores")
+            st.markdown("⬜ D - Doji: Indica indecisão e possível reversão")
+            st.markdown("🔼 H - Hammer: Possível reversão de alta")
+            st.markdown("🔽 SS - Shooting Star: Possível reversão de baixa")
     
     # Layout do gráfico principal
     fig.update_layout(
