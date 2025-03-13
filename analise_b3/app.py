@@ -60,72 +60,63 @@ intervalo_velas = st.sidebar.selectbox(
 
 # Adicionar controles para indicadores técnicos no sidebar
 st.sidebar.header("Indicadores Técnicos")
-show_sma = st.sidebar.checkbox("Média Móvel Simples (SMA)", value=True)
-show_ema = st.sidebar.checkbox("Média Móvel Exponencial (EMA)", value=False)
-show_rsi = st.sidebar.checkbox("RSI", value=False)
-show_macd = st.sidebar.checkbox("MACD", value=False)
 
-# Períodos para as médias móveis
-sma_periods = []
-ema_periods = []
-if show_sma or show_ema:
-    st.sidebar.subheader("Períodos das Médias Móveis")
-    if show_sma:
-        sma_periods = st.sidebar.multiselect(
-            "Períodos SMA",
-            options=[9, 20, 50, 100, 200],
-            default=[20, 50]
+# Toggle para Médias Móveis
+with st.sidebar.expander("📊 Médias Móveis", expanded=False):
+    show_sma = st.checkbox("Média Móvel Simples (SMA)", value=True)
+    show_ema = st.checkbox("Média Móvel Exponencial (EMA)", value=False)
+    if show_sma or show_ema:
+        if show_sma:
+            sma_periods = st.multiselect(
+                "Períodos SMA",
+                options=[9, 20, 50, 100, 200],
+                default=[20, 50]
+            )
+        if show_ema:
+            ema_periods = st.multiselect(
+                "Períodos EMA",
+                options=[9, 20, 50, 100, 200],
+                default=[20]
+            )
+
+# Toggle para Momentum
+with st.sidebar.expander("📈 Momentum", expanded=False):
+    show_rsi = st.checkbox("RSI", value=False)
+    show_macd = st.checkbox("MACD", value=False)
+    if show_rsi:
+        rsi_period = st.slider("Período RSI", min_value=2, max_value=30, value=14)
+        rsi_overbought = st.slider("Sobrecompra", min_value=50, max_value=100, value=70)
+        rsi_oversold = st.slider("Sobrevenda", min_value=0, max_value=50, value=30)
+    if show_macd:
+        macd_fast = st.slider("MACD Rápido", min_value=5, max_value=20, value=12)
+        macd_slow = st.slider("MACD Lento", min_value=20, max_value=40, value=26)
+        macd_signal = st.slider("MACD Sinal", min_value=5, max_value=20, value=9)
+
+# Toggle para Análise de Padrões
+with st.sidebar.expander("🕯️ Padrões", expanded=False):
+    show_patterns = st.checkbox("Padrões de Candlestick", value=True)
+    show_sr = st.checkbox("Suportes e Resistências", value=True)
+    if show_sr:
+        sensitivity = st.slider(
+            "Sensibilidade da Detecção",
+            min_value=0.1,
+            max_value=2.0,
+            value=0.5,
+            step=0.1,
+            help="Ajusta a sensibilidade na detecção de níveis"
         )
-    if show_ema:
-        ema_periods = st.sidebar.multiselect(
-            "Períodos EMA",
-            options=[9, 20, 50, 100, 200],
-            default=[20]
-        )
-
-# Configurações do RSI
-rsi_period = 14
-rsi_overbought = 70
-rsi_oversold = 30
-if show_rsi:
-    st.sidebar.subheader("Configurações do RSI")
-    rsi_period = st.sidebar.slider("Período RSI", min_value=2, max_value=30, value=14)
-    rsi_overbought = st.sidebar.slider("Sobrecompra", min_value=50, max_value=100, value=70)
-    rsi_oversold = st.sidebar.slider("Sobrevenda", min_value=0, max_value=50, value=30)
-
-# Configurações do MACD
-macd_fast = 12
-macd_slow = 26
-macd_signal = 9
-if show_macd:
-    st.sidebar.subheader("Configurações do MACD")
-    macd_fast = st.sidebar.slider("MACD Rápido", min_value=5, max_value=20, value=12)
-    macd_slow = st.sidebar.slider("MACD Lento", min_value=20, max_value=40, value=26)
-    macd_signal = st.sidebar.slider("MACD Sinal", min_value=5, max_value=20, value=9)
-
-# Adicionar controles para padrões de candlestick no sidebar
-st.sidebar.header("Padrões de Candlestick")
-show_patterns = st.sidebar.checkbox("Mostrar Padrões de Candlestick", value=True)
+        show_fibonacci = st.checkbox("Mostrar Níveis de Fibonacci", value=True)
+        if show_fibonacci:
+            fib_levels = st.multiselect(
+                "Níveis de Fibonacci",
+                options=[0, 0.236, 0.382, 0.5, 0.618, 0.786, 1],
+                default=[0.236, 0.382, 0.5, 0.618],
+                help="Selecione os níveis de Fibonacci para exibir"
+            )
 
 # Adicionar controles para ajuste do gráfico no sidebar
-st.sidebar.header("Ajustes do Gráfico")
-candle_width = st.sidebar.slider(
-    "Largura das Velas",
-    min_value=0.1,
-    max_value=0.8,
-    value=0.4,
-    step=0.05,
-    help="Ajusta a largura das velas no gráfico"
-)
-
-candle_spacing = st.sidebar.slider(
-    "Espaçamento entre Velas",
-    min_value=0.0,
-    max_value=0.3,
-    value=0.05,
-    step=0.01,
-    help="Ajusta o espaçamento entre as velas"
-)
+candle_width = 0.20  # Valor fixo para largura das velas
+candle_spacing = 0.1  # Valor fixo para espaçamento entre velas
 
 @st.cache_data
 # Função para carregar dados das ações  
@@ -236,6 +227,81 @@ def detectar_padroes_candlestick(dados):
     # Spinning Top (removido pois era muito genérico)
     
     return df
+
+@st.cache_data
+def detectar_suportes_resistencias(dados, sensitivity=0.5):
+    """Detecta níveis de suporte e resistência usando análise de pivots"""
+    df = dados.copy()
+    
+    # Identificar pivots (pontos de reversão)
+    df['pivot'] = False
+    for i in range(2, len(df)-2):
+        # Pivot de alta (resistência)
+        if (df['High'].iloc[i] > df['High'].iloc[i-1] and 
+            df['High'].iloc[i] > df['High'].iloc[i-2] and
+            df['High'].iloc[i] > df['High'].iloc[i+1] and 
+            df['High'].iloc[i] > df['High'].iloc[i+2]):
+            df.loc[df.index[i], 'pivot'] = True
+            df.loc[df.index[i], 'pivot_type'] = 'resistance'
+        
+        # Pivot de baixa (suporte)
+        if (df['Low'].iloc[i] < df['Low'].iloc[i-1] and 
+            df['Low'].iloc[i] < df['Low'].iloc[i-2] and
+            df['Low'].iloc[i] < df['Low'].iloc[i+1] and 
+            df['Low'].iloc[i] < df['Low'].iloc[i+2]):
+            df.loc[df.index[i], 'pivot'] = True
+            df.loc[df.index[i], 'pivot_type'] = 'support'
+    
+    # Agrupar níveis próximos
+    def group_levels(levels, tolerance):
+        if not levels:
+            return []
+        groups = []
+        current_group = [levels[0]]
+        
+        for level in levels[1:]:
+            if abs(level - current_group[0]) <= tolerance:
+                current_group.append(level)
+            else:
+                groups.append(sum(current_group) / len(current_group))
+                current_group = [level]
+        
+        groups.append(sum(current_group) / len(current_group))
+        return groups
+    
+    # Calcular tolerância baseada na volatilidade
+    volatility = df['Close'].pct_change().std()
+    tolerance = volatility * sensitivity
+    
+    # Agrupar níveis de suporte e resistência
+    resistance_levels = group_levels(
+        df[df['pivot_type'] == 'resistance']['High'].tolist(),
+        tolerance
+    )
+    support_levels = group_levels(
+        df[df['pivot_type'] == 'support']['Low'].tolist(),
+        tolerance
+    )
+    
+    return resistance_levels, support_levels
+
+@st.cache_data
+def calcular_niveis_fibonacci(dados, fib_levels):
+    """Calcula níveis de Fibonacci baseados no range de preços"""
+    high = dados['High'].max()
+    low = dados['Low'].min()
+    diff = high - low
+    
+    fib_levels_dict = {}
+    for level in fib_levels:
+        if level == 0:
+            fib_levels_dict[level] = low
+        elif level == 1:
+            fib_levels_dict[level] = high
+        else:
+            fib_levels_dict[level] = high - (diff * level)
+    
+    return fib_levels_dict
 
 try:
     # Carregando dados
@@ -600,6 +666,46 @@ try:
     )
     
     st.plotly_chart(fig_volume, use_container_width=True, config={'displaylogo': False})
+
+    # Adicionar suportes e resistências ao gráfico
+    if show_sr:
+        resistance_levels, support_levels = detectar_suportes_resistencias(dados, sensitivity)
+        
+        # Plotar níveis de resistência
+        for level in resistance_levels:
+            fig.add_hline(
+                y=level,
+                line_dash="dash",
+                line_color="red",
+                annotation_text=f"R: {level:.2f}",
+                annotation_position="right",
+                annotation_font_color="red"
+            )
+        
+        # Plotar níveis de suporte
+        for level in support_levels:
+            fig.add_hline(
+                y=level,
+                line_dash="dash",
+                line_color="green",
+                annotation_text=f"S: {level:.2f}",
+                annotation_position="right",
+                annotation_font_color="green"
+            )
+        
+        # Adicionar níveis de Fibonacci se ativado
+        if show_fibonacci:
+            fib_levels_dict = calcular_niveis_fibonacci(dados, fib_levels)
+            
+            for level, price in fib_levels_dict.items():
+                fig.add_hline(
+                    y=price,
+                    line_dash="dot",
+                    line_color="yellow",
+                    annotation_text=f"Fib {level:.3f}: {price:.2f}",
+                    annotation_position="right",
+                    annotation_font_color="yellow"
+                )
 
 except Exception as e:
     st.error(f"Erro ao carregar dados: {str(e)}")
