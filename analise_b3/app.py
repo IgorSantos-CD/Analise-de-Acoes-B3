@@ -453,7 +453,8 @@ try:
                 thickness=0.05,
                 bgcolor="rgb(48, 48, 48)",
                 bordercolor="rgb(128, 128, 128)",
-                borderwidth=1
+                borderwidth=1,
+                range=[dados.index[-100].timestamp() * 1000, dados.index[-1].timestamp() * 1000]  # Zoom padrão do rangeslider
             ),
             rangeselector=dict(
                 buttons=list([
