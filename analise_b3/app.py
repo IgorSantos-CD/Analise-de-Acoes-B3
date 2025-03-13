@@ -31,20 +31,6 @@ acao_selecionada = st.sidebar.selectbox(
     format_func=lambda x: f"{x} - {acoes_populares[x]}"
 )
 
-# Período de análise
-periodo = st.sidebar.selectbox(
-    "Selecione o período de análise:",
-    options=['1mo', '3mo', '6mo', '1y', '2y', '5y'],
-    format_func=lambda x: {
-        '1mo': '1 Mês',
-        '3mo': '3 Meses',
-        '6mo': '6 Meses',
-        '1y': '1 Ano',
-        '2y': '2 Anos',
-        '5y': '5 Anos'
-    }[x]
-)
-
 # Intervalo das velas
 intervalo_velas = st.sidebar.selectbox(
     "Intervalo das velas:",
@@ -55,6 +41,35 @@ intervalo_velas = st.sidebar.selectbox(
         '1h': '1 Hora',
         '3h': '3 Horas',
         '1d': 'Diário'
+    }[x]
+)
+
+# Definir períodos disponíveis baseado no intervalo
+def get_periodos_disponiveis(intervalo):
+    if intervalo == '5m':
+        return ['1d', '5d', '1mo']
+    elif intervalo == '15m':
+        return ['1d', '5d', '1mo', '3mo']
+    elif intervalo == '1h':
+        return ['1d', '5d', '1mo', '3mo', '6mo']
+    elif intervalo == '3h':
+        return ['1d', '5d', '1mo', '3mo', '6mo', '1y']
+    else:  # 1d
+        return ['1mo', '3mo', '6mo', '1y', '2y', '5y']
+
+# Período de análise
+periodo = st.sidebar.selectbox(
+    "Selecione o período de análise:",
+    options=get_periodos_disponiveis(intervalo_velas),
+    format_func=lambda x: {
+        '1d': '1 Dia',
+        '5d': '5 Dias',
+        '1mo': '1 Mês',
+        '3mo': '3 Meses',
+        '6mo': '6 Meses',
+        '1y': '1 Ano',
+        '2y': '2 Anos',
+        '5y': '5 Anos'
     }[x]
 )
 
@@ -123,6 +138,8 @@ candle_spacing = 0.1  # Valor fixo para espaçamento entre velas
 def carregar_dados(ticker, periodo, intervalo):
     acao = yf.Ticker(ticker)
     hist = acao.history(period=periodo, interval=intervalo)
+    # Remove registros sem dados (mercado fechado)
+    hist = hist.dropna()
     return hist, acao.info
 
 @st.cache_data
@@ -520,7 +537,7 @@ try:
                 bgcolor="rgb(48, 48, 48)",
                 bordercolor="rgb(128, 128, 128)",
                 borderwidth=1,
-                range=[dados.index[-100].timestamp() * 1000, dados.index[-1].timestamp() * 1000]  # Zoom padrão do rangeslider
+                range=[dados.index[-min(100, len(dados))].timestamp() * 1000, dados.index[-1].timestamp() * 1000]  # Zoom padrão do rangeslider
             ),
             rangeselector=dict(
                 buttons=list([
