@@ -138,8 +138,18 @@ candle_spacing = 0.1  # Valor fixo para espaçamento entre velas
 def carregar_dados(ticker, periodo, intervalo):
     acao = yf.Ticker(ticker)
     hist = acao.history(period=periodo, interval=intervalo)
+    
     # Remove registros sem dados (mercado fechado)
     hist = hist.dropna()
+    
+    # Reindexa os dados para remover espaços entre os dias
+    if intervalo == '1d':
+        hist = hist.resample('D').last().dropna()
+    elif intervalo in ['5m', '15m', '1h', '3h']:
+        # Para intervalos intraday, mantém apenas os dias úteis
+        hist = hist[hist.index.dayofweek < 5]  # Remove sábados e domingos
+        hist = hist.between_time('10:00', '18:00')  # Mantém apenas horário de pregão
+    
     return hist, acao.info
 
 @st.cache_data
@@ -300,7 +310,26 @@ def detectar_suportes_resistencias(dados, sensitivity=0.5):
         tolerance
     )
     
-    return resistance_levels, support_levels
+    # Obter preço atual
+    preco_atual = df['Close'].iloc[-1]
+    
+    # Filtrar níveis baseado na posição do preço atual
+    resistance_levels = [level for level in resistance_levels if level > preco_atual]
+    support_levels = [level for level in support_levels if level < preco_atual]
+    
+    # Ordenar níveis por distância do preço atual
+    def get_closest_levels(levels, preco, n=3):
+        if not levels:
+            return []
+        # Ordenar níveis por distância do preço atual
+        sorted_levels = sorted(levels, key=lambda x: abs(x - preco))
+        return sorted_levels[:n]
+    
+    # Retornar apenas os 3 níveis mais próximos
+    closest_resistance = get_closest_levels(resistance_levels, preco_atual)
+    closest_support = get_closest_levels(support_levels, preco_atual)
+    
+    return closest_resistance, closest_support
 
 @st.cache_data
 def calcular_niveis_fibonacci(dados, fib_levels):
@@ -416,6 +445,46 @@ try:
                 line=dict(width=1, dash='dash'),
                 opacity=0.7
             ))
+
+    # Adicionar suportes e resistências ao gráfico
+    if show_sr:
+        resistance_levels, support_levels = detectar_suportes_resistencias(dados, sensitivity)
+        
+        # Plotar níveis de resistência
+        for level in resistance_levels:
+            fig.add_hline(
+                y=level,
+                line_dash="dash",
+                line_color="red",
+                annotation_text=f"R: {level:.2f}",
+                annotation_position="right",
+                annotation_font_color="red"
+            )
+        
+        # Plotar níveis de suporte
+        for level in support_levels:
+            fig.add_hline(
+                y=level,
+                line_dash="dash",
+                line_color="green",
+                annotation_text=f"S: {level:.2f}",
+                annotation_position="right",
+                annotation_font_color="green"
+            )
+        
+        # Adicionar níveis de Fibonacci se ativado
+        if show_fibonacci:
+            fib_levels_dict = calcular_niveis_fibonacci(dados, fib_levels)
+            
+            for level, price in fib_levels_dict.items():
+                fig.add_hline(
+                    y=price,
+                    line_dash="dot",
+                    line_color="yellow",
+                    annotation_text=f"Fib {level:.3f}: {price:.2f}",
+                    annotation_position="right",
+                    annotation_font_color="yellow"
+                )
     
     # Detectar padrões se estiver ativado
     if show_patterns:
@@ -683,46 +752,6 @@ try:
     )
     
     st.plotly_chart(fig_volume, use_container_width=True, config={'displaylogo': False})
-
-    # Adicionar suportes e resistências ao gráfico
-    if show_sr:
-        resistance_levels, support_levels = detectar_suportes_resistencias(dados, sensitivity)
-        
-        # Plotar níveis de resistência
-        for level in resistance_levels:
-            fig.add_hline(
-                y=level,
-                line_dash="dash",
-                line_color="red",
-                annotation_text=f"R: {level:.2f}",
-                annotation_position="right",
-                annotation_font_color="red"
-            )
-        
-        # Plotar níveis de suporte
-        for level in support_levels:
-            fig.add_hline(
-                y=level,
-                line_dash="dash",
-                line_color="green",
-                annotation_text=f"S: {level:.2f}",
-                annotation_position="right",
-                annotation_font_color="green"
-            )
-        
-        # Adicionar níveis de Fibonacci se ativado
-        if show_fibonacci:
-            fib_levels_dict = calcular_niveis_fibonacci(dados, fib_levels)
-            
-            for level, price in fib_levels_dict.items():
-                fig.add_hline(
-                    y=price,
-                    line_dash="dot",
-                    line_color="yellow",
-                    annotation_text=f"Fib {level:.3f}: {price:.2f}",
-                    annotation_position="right",
-                    annotation_font_color="yellow"
-                )
 
 except Exception as e:
     st.error(f"Erro ao carregar dados: {str(e)}")
