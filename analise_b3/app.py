@@ -103,6 +103,30 @@ if show_macd:
     macd_slow = st.sidebar.slider("MACD Lento", min_value=20, max_value=40, value=26)
     macd_signal = st.sidebar.slider("MACD Sinal", min_value=5, max_value=20, value=9)
 
+# Adicionar controles para padrões de candlestick no sidebar
+st.sidebar.header("Padrões de Candlestick")
+show_patterns = st.sidebar.checkbox("Mostrar Padrões de Candlestick", value=True)
+
+# Adicionar controles para ajuste do gráfico no sidebar
+st.sidebar.header("Ajustes do Gráfico")
+candle_width = st.sidebar.slider(
+    "Largura das Velas",
+    min_value=0.1,
+    max_value=0.8,
+    value=0.4,
+    step=0.05,
+    help="Ajusta a largura das velas no gráfico"
+)
+
+candle_spacing = st.sidebar.slider(
+    "Espaçamento entre Velas",
+    min_value=0.0,
+    max_value=0.3,
+    value=0.05,
+    step=0.01,
+    help="Ajusta o espaçamento entre as velas"
+)
+
 @st.cache_data
 # Função para carregar dados das ações  
 def carregar_dados(ticker, periodo, intervalo):
@@ -145,6 +169,44 @@ def calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
     
     return df
 
+@st.cache_data
+def detectar_padroes_candlestick(dados):
+    """Detecta padrões de candlestick no DataFrame"""
+    df = dados.copy()
+    
+    # Funções auxiliares para cálculo de tamanhos
+    def body_size(row):
+        return abs(row['Close'] - row['Open'])
+    
+    def upper_shadow(row):
+        return row['High'] - max(row['Open'], row['Close'])
+    
+    def lower_shadow(row):
+        return min(row['Open'], row['Close']) - row['Low']
+    
+    def total_size(row):
+        return row['High'] - row['Low']
+    
+    # Calculando tamanhos para cada vela
+    df['body_size'] = df.apply(body_size, axis=1)
+    df['upper_shadow'] = df.apply(upper_shadow, axis=1)
+    df['lower_shadow'] = df.apply(lower_shadow, axis=1)
+    df['total_size'] = df.apply(total_size, axis=1)
+    
+    # Padrões de reversão
+    df['doji'] = (df['body_size'] <= df['total_size'] * 0.1) & (df['upper_shadow'] > 0) & (df['lower_shadow'] > 0)
+    df['hammer'] = (df['lower_shadow'] > 2 * df['body_size']) & (df['upper_shadow'] < df['body_size'])
+    df['shooting_star'] = (df['upper_shadow'] > 2 * df['body_size']) & (df['lower_shadow'] < df['body_size'])
+    
+    # Padrões de continuidade
+    df['bullish_marubozu'] = (df['Close'] > df['Open']) & (df['body_size'] > df['total_size'] * 0.8)
+    df['bearish_marubozu'] = (df['Close'] < df['Open']) & (df['body_size'] > df['total_size'] * 0.8)
+    
+    # Padrões de indecisão
+    df['spinning_top'] = (df['body_size'] <= df['total_size'] * 0.3) & (df['upper_shadow'] > 0) & (df['lower_shadow'] > 0)
+    
+    return df
+
 try:
     # Carregando dados
     with st.spinner('Carregando dados...'):
@@ -154,6 +216,10 @@ try:
     dados = calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
                                sma_periods, ema_periods, rsi_period,
                                macd_fast, macd_slow, macd_signal)
+    
+    # Detectar padrões se estiver ativado
+    if show_patterns:
+        dados = detectar_padroes_candlestick(dados)
     
     # Métricas principais
     col1, col2, col3, col4 = st.columns(4)
@@ -206,7 +272,15 @@ try:
                   dados['Low'],
                   dados['Close']
               )],
-        hoverinfo='text'
+        hoverinfo='text',
+        increasing_line_color='#26a69a',
+        decreasing_line_color='#ef5350',
+        increasing_fillcolor='#26a69a',
+        decreasing_fillcolor='#ef5350',
+        line=dict(width=1),
+        whiskerwidth=candle_width,
+        xperiodalignment="middle",
+        xperiod=candle_spacing
     ))
     
     # Adicionando médias móveis
@@ -230,6 +304,126 @@ try:
                 opacity=0.7
             ))
     
+    # Detectar padrões se estiver ativado
+    if show_patterns:
+        # Adicionar marcadores para os padrões
+        for idx in dados.index:
+            if dados.loc[idx, 'doji']:
+                fig.add_trace(go.Scatter(
+                    x=[idx],
+                    y=[dados.loc[idx, 'High']],
+                    mode='markers+text',
+                    marker=dict(
+                        symbol='diamond',
+                        size=10,
+                        color='yellow',
+                        line=dict(color='black', width=1)
+                    ),
+                    text='D',
+                    textposition='top center',
+                    name='Doji',
+                    showlegend=False
+                ))
+            if dados.loc[idx, 'hammer']:
+                fig.add_trace(go.Scatter(
+                    x=[idx],
+                    y=[dados.loc[idx, 'Low']],
+                    mode='markers+text',
+                    marker=dict(
+                        symbol='triangle-up',
+                        size=10,
+                        color='green',
+                        line=dict(color='black', width=1)
+                    ),
+                    text='H',
+                    textposition='bottom center',
+                    name='Hammer',
+                    showlegend=False
+                ))
+            if dados.loc[idx, 'shooting_star']:
+                fig.add_trace(go.Scatter(
+                    x=[idx],
+                    y=[dados.loc[idx, 'High']],
+                    mode='markers+text',
+                    marker=dict(
+                        symbol='triangle-down',
+                        size=10,
+                        color='red',
+                        line=dict(color='black', width=1)
+                    ),
+                    text='SS',
+                    textposition='top center',
+                    name='Shooting Star',
+                    showlegend=False
+                ))
+            if dados.loc[idx, 'bullish_marubozu']:
+                fig.add_trace(go.Scatter(
+                    x=[idx],
+                    y=[dados.loc[idx, 'High']],
+                    mode='markers+text',
+                    marker=dict(
+                        symbol='circle',
+                        size=10,
+                        color='green',
+                        line=dict(color='black', width=1)
+                    ),
+                    text='BM',
+                    textposition='top center',
+                    name='Bullish Marubozu',
+                    showlegend=False
+                ))
+            if dados.loc[idx, 'bearish_marubozu']:
+                fig.add_trace(go.Scatter(
+                    x=[idx],
+                    y=[dados.loc[idx, 'Low']],
+                    mode='markers+text',
+                    marker=dict(
+                        symbol='circle',
+                        size=10,
+                        color='red',
+                        line=dict(color='black', width=1)
+                    ),
+                    text='BM',
+                    textposition='bottom center',
+                    name='Bearish Marubozu',
+                    showlegend=False
+                ))
+            if dados.loc[idx, 'spinning_top']:
+                fig.add_trace(go.Scatter(
+                    x=[idx],
+                    y=[dados.loc[idx, 'High']],
+                    mode='markers+text',
+                    marker=dict(
+                        symbol='square',
+                        size=10,
+                        color='yellow',
+                        line=dict(color='black', width=1)
+                    ),
+                    text='ST',
+                    textposition='top center',
+                    name='Spinning Top',
+                    showlegend=False
+                ))
+        
+        # Adicionar legenda para os padrões
+        st.subheader("Padrões de Candlestick Detectados")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Padrões de Reversão**")
+            st.markdown("🔷 D - Doji: Indica indecisão e possível reversão")
+            st.markdown("🔼 H - Hammer: Possível reversão de alta")
+            st.markdown("🔽 SS - Shooting Star: Possível reversão de baixa")
+        
+        with col2:
+            st.markdown("**Padrões de Continuidade**")
+            st.markdown("🟢 BM - Bullish Marubozu: Forte tendência de alta")
+            st.markdown("🔴 BM - Bearish Marubozu: Forte tendência de baixa")
+        
+        with col3:
+            st.markdown("**Padrões de Indecisão**")
+            st.markdown("⬜ ST - Spinning Top: Indecisão entre compradores e vendedores")
+    
     # Layout do gráfico principal
     fig.update_layout(
         template='plotly_dark',
@@ -238,7 +432,13 @@ try:
         dragmode='pan',
         xaxis=dict(
             type='date',
-            rangeslider=dict(visible=True, thickness=0.05),
+            rangeslider=dict(
+                visible=True,
+                thickness=0.05,
+                bgcolor="rgb(48, 48, 48)",
+                bordercolor="rgb(128, 128, 128)",
+                borderwidth=1
+            ),
             rangeselector=dict(
                 buttons=list([
                     dict(count=1, label="1D", step="day", stepmode="backward"),
@@ -258,7 +458,8 @@ try:
             title="Preço (R$)",
             tickformat='.2f',
             tickprefix='R$ ',
-            fixedrange=False
+            fixedrange=False,
+            side='right'
         ),
         xaxis_gridcolor='rgba(128, 128, 128, 0.1)',
         yaxis_gridcolor='rgba(128, 128, 128, 0.1)',
@@ -270,8 +471,13 @@ try:
             yanchor="top",
             y=0.99,
             xanchor="left",
-            x=0.01
-        )
+            x=0.01,
+            bgcolor="rgba(0, 0, 0, 0.5)",
+            bordercolor="rgba(128, 128, 128, 0.5)",
+            borderwidth=1
+        ),
+        bargap=0.15,
+        bargroupgap=0.1
     )
     
     # Configurações do gráfico
