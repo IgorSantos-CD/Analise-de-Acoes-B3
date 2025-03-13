@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
+import ta  # Biblioteca para indicadores técnicos
 
 st.set_page_config(page_title="Análise B3", layout="wide")
 
@@ -57,6 +58,51 @@ intervalo_velas = st.sidebar.selectbox(
     }[x]
 )
 
+# Adicionar controles para indicadores técnicos no sidebar
+st.sidebar.header("Indicadores Técnicos")
+show_sma = st.sidebar.checkbox("Média Móvel Simples (SMA)", value=True)
+show_ema = st.sidebar.checkbox("Média Móvel Exponencial (EMA)", value=False)
+show_rsi = st.sidebar.checkbox("RSI", value=False)
+show_macd = st.sidebar.checkbox("MACD", value=False)
+
+# Períodos para as médias móveis
+sma_periods = []
+ema_periods = []
+if show_sma or show_ema:
+    st.sidebar.subheader("Períodos das Médias Móveis")
+    if show_sma:
+        sma_periods = st.sidebar.multiselect(
+            "Períodos SMA",
+            options=[9, 20, 50, 100, 200],
+            default=[20, 50]
+        )
+    if show_ema:
+        ema_periods = st.sidebar.multiselect(
+            "Períodos EMA",
+            options=[9, 20, 50, 100, 200],
+            default=[20]
+        )
+
+# Configurações do RSI
+rsi_period = 14
+rsi_overbought = 70
+rsi_oversold = 30
+if show_rsi:
+    st.sidebar.subheader("Configurações do RSI")
+    rsi_period = st.sidebar.slider("Período RSI", min_value=2, max_value=30, value=14)
+    rsi_overbought = st.sidebar.slider("Sobrecompra", min_value=50, max_value=100, value=70)
+    rsi_oversold = st.sidebar.slider("Sobrevenda", min_value=0, max_value=50, value=30)
+
+# Configurações do MACD
+macd_fast = 12
+macd_slow = 26
+macd_signal = 9
+if show_macd:
+    st.sidebar.subheader("Configurações do MACD")
+    macd_fast = st.sidebar.slider("MACD Rápido", min_value=5, max_value=20, value=12)
+    macd_slow = st.sidebar.slider("MACD Lento", min_value=20, max_value=40, value=26)
+    macd_signal = st.sidebar.slider("MACD Sinal", min_value=5, max_value=20, value=9)
+
 @st.cache_data
 # Função para carregar dados das ações  
 def carregar_dados(ticker, periodo, intervalo):
@@ -64,11 +110,50 @@ def carregar_dados(ticker, periodo, intervalo):
     hist = acao.history(period=periodo, interval=intervalo)
     return hist, acao.info
 
+@st.cache_data
+def calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd, 
+                        sma_periods, ema_periods, rsi_period, 
+                        macd_fast, macd_slow, macd_signal):
+    """Calcula os indicadores técnicos selecionados"""
+    df = dados.copy()
+    
+    # Médias Móveis Simples
+    if show_sma:
+        for period in sma_periods:
+            df[f'SMA_{period}'] = ta.trend.sma_indicator(df['Close'], window=period)
+    
+    # Médias Móveis Exponenciais
+    if show_ema:
+        for period in ema_periods:
+            df[f'EMA_{period}'] = ta.trend.ema_indicator(df['Close'], window=period)
+    
+    # RSI
+    if show_rsi:
+        df['RSI'] = ta.momentum.rsi(df['Close'], window=rsi_period)
+    
+    # MACD
+    if show_macd:
+        macd = ta.trend.macd_diff(df['Close'], 
+                                 window_slow=macd_slow,
+                                 window_fast=macd_fast,
+                                 window_sign=macd_signal)
+        df['MACD'] = macd
+        df['MACD_Signal'] = ta.trend.macd_signal(df['Close'],
+                                                window_slow=macd_slow,
+                                                window_fast=macd_fast,
+                                                window_sign=macd_signal)
+    
+    return df
 
 try:
     # Carregando dados
     with st.spinner('Carregando dados...'):
         dados, info = carregar_dados(acao_selecionada, periodo, intervalo_velas)
+        
+    # Calculando indicadores
+    dados = calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
+                               sma_periods, ema_periods, rsi_period,
+                               macd_fast, macd_slow, macd_signal)
     
     # Métricas principais
     col1, col2, col3, col4 = st.columns(4)
@@ -98,43 +183,59 @@ try:
             f"R$ {dados['Low'].min():.2f}"
         )
 
-    # Gráfico de candlestick
-    intervalo_nome = {
-        '5m': 'Cinco Minutos',
-        '15m': 'Quinze Minutos',
-        '1h': 'Uma Hora',
-        '3h': 'Três Horas',
-        '1d': 'Diário'
-    }
-    st.subheader(f"Gráfico de Candlestick ({intervalo_nome[intervalo_velas]})")
-    fig = go.Figure(data=[go.Candlestick(
-                x=dados.index,
-                open=dados['Open'],
-                high=dados['High'],
-                low=dados['Low'],
-                close=dados['Close'],
-                name='OHLC',
-                text=[f"Data: {index}<br>" +
-                      f"Abertura: R$ {open:.2f}<br>" +
-                      f"Máxima: R$ {high:.2f}<br>" +
-                      f"Mínima: R$ {low:.2f}<br>" +
-                      f"Fechamento: R$ {close:.2f}"
-                      for index, open, high, low, close in zip(
-                          dados.index,
-                          dados['Open'],
-                          dados['High'],
-                          dados['Low'],
-                          dados['Close']
-                      )],
-                hoverinfo='text'
-    )])
+    # Gráfico de candlestick com indicadores
+    fig = go.Figure()
     
-    # Configuração do layout melhorado
+    # Candlestick principal
+    fig.add_trace(go.Candlestick(
+        x=dados.index,
+        open=dados['Open'],
+        high=dados['High'],
+        low=dados['Low'],
+        close=dados['Close'],
+        name='OHLC',
+        text=[f"Data: {index}<br>" +
+              f"Abertura: R$ {open:.2f}<br>" +
+              f"Máxima: R$ {high:.2f}<br>" +
+              f"Mínima: R$ {low:.2f}<br>" +
+              f"Fechamento: R$ {close:.2f}"
+              for index, open, high, low, close in zip(
+                  dados.index,
+                  dados['Open'],
+                  dados['High'],
+                  dados['Low'],
+                  dados['Close']
+              )],
+        hoverinfo='text'
+    ))
+    
+    # Adicionando médias móveis
+    if show_sma:
+        for period in sma_periods:
+            fig.add_trace(go.Scatter(
+                x=dados.index,
+                y=dados[f'SMA_{period}'],
+                name=f'SMA {period}',
+                line=dict(width=1),
+                opacity=0.7
+            ))
+    
+    if show_ema:
+        for period in ema_periods:
+            fig.add_trace(go.Scatter(
+                x=dados.index,
+                y=dados[f'EMA_{period}'],
+                name=f'EMA {period}',
+                line=dict(width=1, dash='dash'),
+                opacity=0.7
+            ))
+    
+    # Layout do gráfico principal
     fig.update_layout(
         template='plotly_dark',
-        xaxis_rangeslider_visible=True,  # Habilitando o rangeslider
+        xaxis_rangeslider_visible=True,
         height=600,
-        dragmode='pan',  # Alterado para pan (arrastar) como padrão
+        dragmode='pan',
         xaxis=dict(
             type='date',
             rangeslider=dict(visible=True, thickness=0.05),
@@ -157,34 +258,23 @@ try:
             title="Preço (R$)",
             tickformat='.2f',
             tickprefix='R$ ',
-            fixedrange=False  # Permite zoom no eixo Y
+            fixedrange=False
         ),
-        # Adicionando uma grade mais suave
         xaxis_gridcolor='rgba(128, 128, 128, 0.1)',
         yaxis_gridcolor='rgba(128, 128, 128, 0.1)',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(0, 0, 0, 0)',
-        # Configurando as margens
         margin=dict(l=50, r=50, t=50, b=50),
-        showlegend=True,  # Mostra a legenda
+        showlegend=True,
         legend=dict(
             yanchor="top",
             y=0.99,
             xanchor="left",
             x=0.01
-        ),
-        # Adicionando botões de modo de interação
-        modebar_add=[
-            'drawline',
-            'drawopenpath',
-            'drawclosedpath',
-            'drawcircle',
-            'drawrect',
-            'eraseshape'
-        ]
+        )
     )
-
-    # Configurações adicionais para melhor interatividade
+    
+    # Configurações do gráfico
     config = {
         'modeBarButtonsToAdd': [
             'drawline',
@@ -209,31 +299,58 @@ try:
             'width': 1200,
             'scale': 2
         },
-        'displayModeBar': True,  # Sempre mostra a barra de ferramentas
-        'doubleClick': 'reset+autosize'  # Duplo clique reseta o zoom
+        'displayModeBar': True,
+        'doubleClick': 'reset+autosize'
     }
     
     st.plotly_chart(fig, use_container_width=True, config=config)
+    
+    # Gráficos adicionais para RSI e MACD
+    if show_rsi or show_macd:
+        col1, col2 = st.columns(2)
+        
+        if show_rsi:
+            with col1:
+                fig_rsi = go.Figure()
+                fig_rsi.add_trace(go.Scatter(
+                    x=dados.index,
+                    y=dados['RSI'],
+                    name='RSI',
+                    line=dict(color='blue')
+                ))
+                fig_rsi.add_hline(y=rsi_overbought, line_dash="dash", line_color="red")
+                fig_rsi.add_hline(y=rsi_oversold, line_dash="dash", line_color="green")
+                fig_rsi.update_layout(
+                    title='RSI',
+                    height=300,
+                    template='plotly_dark',
+                    yaxis=dict(range=[0, 100])
+                )
+                st.plotly_chart(fig_rsi, use_container_width=True)
+        
+        if show_macd:
+            with col2:
+                fig_macd = go.Figure()
+                fig_macd.add_trace(go.Scatter(
+                    x=dados.index,
+                    y=dados['MACD'],
+                    name='MACD',
+                    line=dict(color='blue')
+                ))
+                fig_macd.add_trace(go.Scatter(
+                    x=dados.index,
+                    y=dados['MACD_Signal'],
+                    name='Sinal',
+                    line=dict(color='orange')
+                ))
+                fig_macd.update_layout(
+                    title='MACD',
+                    height=300,
+                    template='plotly_dark'
+                )
+                st.plotly_chart(fig_macd, use_container_width=True)
 
-    # Análise de retornos
-    st.subheader("Análise de Retornos")
-    retornos = dados['Close'].pct_change()
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.metric(
-            "Retorno Total do Período",
-            f"{((dados['Close'].iloc[-1] / dados['Close'].iloc[0] - 1) * 100):.2f}%"
-        )
-    
-    with col2:
-        st.metric(
-            "Volatilidade (Desvio Padrão)",
-            f"{(retornos.std() * 100):.2f}%"
-        )
-
-    # Volume com melhorias visuais também
+    # Volume
     st.subheader("Volume de Negociação")
     fig_volume = go.Figure(data=[
         go.Bar(
