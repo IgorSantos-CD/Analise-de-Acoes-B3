@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
 import ta  # Biblioteca para indicadores técnicos
+from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="Análise B3", layout="wide")
 
@@ -348,6 +349,104 @@ def calcular_niveis_fibonacci(dados, fib_levels):
             fib_levels_dict[level] = high - (diff * level)
     
     return fib_levels_dict
+
+def analisar_momentum(dados, rsi_compra, rsi_venda, macd_fast, macd_slow):
+    """Analisa sinais baseados em momentum"""
+    df = dados.copy()
+    
+    # Calcular indicadores
+    df['RSI'] = ta.momentum.rsi(df['Close'])
+    df['MACD'] = ta.trend.macd_diff(df['Close'], 
+                                   window_slow=macd_slow,
+                                   window_fast=macd_fast)
+    
+    # Gerar sinais
+    df['sinal_rsi'] = np.where(df['RSI'] < rsi_compra, 1,
+                              np.where(df['RSI'] > rsi_venda, -1, 0))
+    
+    df['sinal_macd'] = np.where(df['MACD'] > 0, 1,
+                               np.where(df['MACD'] < 0, -1, 0))
+    
+    return df
+
+def analisar_price_action(dados):
+    """Analisa padrões de price action"""
+    df = dados.copy()
+    
+    # Detectar padrões
+    df['doji'] = (abs(df['Close'] - df['Open']) <= 0.1 * (df['High'] - df['Low']))
+    df['pin_bar'] = ((df['High'] - df['Low']) > 3 * abs(df['Close'] - df['Open']))
+    
+    return df
+
+def analisar_tendencias(dados, mm_curta, mm_longa, atr_period):
+    """Analisa tendências e volatilidade"""
+    df = dados.copy()
+    
+    # Médias móveis
+    df[f'MM{mm_curta}'] = ta.trend.sma_indicator(df['Close'], window=mm_curta)
+    df[f'MM{mm_longa}'] = ta.trend.sma_indicator(df['Close'], window=mm_longa)
+    
+    # ATR para volatilidade
+    df['ATR'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], 
+                                                window=atr_period)
+    
+    return df
+
+def calcular_score_operacao(dados):
+    """Calcula um score geral para operações"""
+    score = 0
+    
+    # Momentum
+    if dados['sinal_rsi'].iloc[-1] == 1 and dados['sinal_macd'].iloc[-1] == 1:
+        score += 2
+    elif dados['sinal_rsi'].iloc[-1] == -1 and dados['sinal_macd'].iloc[-1] == -1:
+        score -= 2
+    
+    # Price Action
+    if dados['doji'].iloc[-1]:
+        score += 1 if dados['Close'].iloc[-1] > dados['Open'].iloc[-1] else -1
+    
+    # Tendência
+    if dados['MM20'].iloc[-1] > dados['MM50'].iloc[-1]:
+        score += 1
+    else:
+        score -= 1
+    
+    return score
+
+def plotar_sinais(dados):
+    """Cria um gráfico com todos os sinais"""
+    fig = make_subplots(rows=3, cols=1, 
+                        shared_xaxes=True,
+                        vertical_spacing=0.05,
+                        row_heights=[0.6, 0.2, 0.2])
+    
+    # Gráfico principal
+    fig.add_trace(go.Candlestick(
+        x=dados.index,
+        open=dados['Open'],
+        high=dados['High'],
+        low=dados['Low'],
+        close=dados['Close'],
+        name='Preço'
+    ), row=1, col=1)
+    
+    # RSI
+    fig.add_trace(go.Scatter(
+        x=dados.index,
+        y=dados['RSI'],
+        name='RSI'
+    ), row=2, col=1)
+    
+    # MACD
+    fig.add_trace(go.Scatter(
+        x=dados.index,
+        y=dados['MACD'],
+        name='MACD'
+    ), row=3, col=1)
+    
+    return fig
 
 try:
     # Carregando dados
