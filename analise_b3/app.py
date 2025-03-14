@@ -35,28 +35,14 @@ acao_selecionada = st.sidebar.selectbox(
 # Intervalo das velas
 intervalo_velas = st.sidebar.selectbox(
     "Intervalo das velas:",
-    options=['5m', '15m', '1h', '3h', '1d'],
-    format_func=lambda x: {
-        '5m': '5 Minutos',
-        '15m': '15 Minutos',
-        '1h': '1 Hora',
-        '3h': '3 Horas',
-        '1d': 'Diário'
-    }[x]
+    options=['1d'],  # Limitado a diário devido ao plano gratuito
+    format_func=lambda x: 'Diário'
 )
 
 # Definir períodos disponíveis baseado no intervalo
 def get_periodos_disponiveis(intervalo):
-    if intervalo == '5m':
-        return ['1d', '5d', '1mo']
-    elif intervalo == '15m':
-        return ['1d', '5d', '1mo', '3mo']
-    elif intervalo == '1h':
-        return ['1d', '5d', '1mo', '3mo', '6mo']
-    elif intervalo == '3h':
-        return ['1d', '5d', '1mo', '3mo', '6mo', '1y']
-    else:  # 1d
-        return ['1mo', '3mo', '6mo', '1y', '2y', '5y']
+    # Limitado a 3 meses devido ao plano gratuito
+    return ['1d', '5d', '1mo', '3mo']
 
 # Período de análise
 periodo = st.sidebar.selectbox(
@@ -66,11 +52,7 @@ periodo = st.sidebar.selectbox(
         '1d': '1 Dia',
         '5d': '5 Dias',
         '1mo': '1 Mês',
-        '3mo': '3 Meses',
-        '6mo': '6 Meses',
-        '1y': '1 Ano',
-        '2y': '2 Anos',
-        '5y': '5 Anos'
+        '3mo': '3 Meses'
     }[x]
 )
 
@@ -134,7 +116,7 @@ with st.sidebar.expander("🕯️ Padrões", expanded=False):
 candle_width = 0.20  # Valor fixo para largura das velas
 candle_spacing = 0.1  # Valor fixo para espaçamento entre velas
 
-@st.cache_data(ttl=300)  # Cache por 5 minutos
+@st.cache_data(ttl=1800)  # Cache por 30 minutos (1800 segundos)
 def carregar_dados(ticker, periodo, intervalo):
     """Carrega dados usando o provedor brapi"""
     try:
@@ -143,11 +125,7 @@ def carregar_dados(ticker, periodo, intervalo):
             '1d': '1d',
             '5d': '5d',
             '1mo': '1mo',
-            '3mo': '3mo',
-            '6mo': '6mo',
-            '1y': '1y',
-            '2y': '2y',
-            '5y': '5y'
+            '3mo': '3mo'  # Máximo de 3 meses no plano gratuito
         }
         
         brapi_range = periodo_map.get(periodo, '1mo')
@@ -159,10 +137,8 @@ def carregar_dados(ticker, periodo, intervalo):
         if len(hist) == 0:
             raise Exception("Não foi possível carregar dados para o período selecionado.")
         
-        # Filtra apenas dias úteis e horário de pregão para dados intraday
-        if intervalo in ['5m', '15m', '1h', '3h']:
-            hist = hist[hist.index.dayofweek < 5]
-            hist = hist.between_time('10:00', '18:00')
+        # Filtra apenas dias úteis
+        hist = hist[hist.index.dayofweek < 5]
         
         return hist, {}
         
@@ -897,6 +873,7 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align: center'>
     <p>Desenvolvido para análise de ações da B3 🚀</p>
-    <p>Os dados são fornecidos pelo Yahoo Finance e podem ter atraso em relação ao mercado.</p>
+    <p>Os dados são fornecidos pela API BRAPI com atualização a cada 30 minutos.</p>
+    <p>Limitado a 3 meses de dados históricos no plano gratuito.</p>
 </div>
 """, unsafe_allow_html=True)

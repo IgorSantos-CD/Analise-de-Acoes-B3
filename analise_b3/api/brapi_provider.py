@@ -1,89 +1,90 @@
-import requests
-import pandas as pd
-from datetime import datetime
 import streamlit as st
+import pandas as pd
+import requests
+from datetime import datetime
 
 class BrapiProvider:
     def __init__(self):
-        self.base_url = "https://brapi.dev/api"
-        self.token = st.secrets.get("BRAPI_TOKEN", "")  # Token será armazenado nas secrets do Streamlit
-    
+        """Inicializa o provedor de dados da BRAPI"""
+        self.base_url = "https://brapi.dev/api/quote"
+        self.token = st.secrets["BRAPI_TOKEN"]
+        
     def _make_request(self, endpoint: str, params: dict = None) -> dict:
-        """Faz uma requisição para a API"""
+        """Faz uma requisição para a API da BRAPI"""
         if params is None:
             params = {}
-        
-        # Adiciona o token aos parâmetros
+            
         params['token'] = self.token
         
-        url = f"{self.base_url}{endpoint}"
-        response = requests.get(url, params=params)
-        
-        if response.status_code == 200:
+        try:
+            response = requests.get(f"{self.base_url}{endpoint}", params=params)
+            response.raise_for_status()  # Levanta exceção para status codes de erro
             return response.json()
-        else:
-            raise Exception(f"Erro na API: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            if "429" in str(e):
+                raise Exception("Limite de requisições atingido. Tente novamente mais tarde.")
+            raise Exception(f"Erro na requisição: {str(e)}")
     
     def get_stock_data(self, symbol: str, range: str = "1d") -> pd.DataFrame:
         """
         Obtém dados históricos de uma ação
-        range: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
+        range: 1d, 5d, 1mo, 3mo (limite do plano gratuito)
         """
-        endpoint = f"/quote/{symbol}"
-        params = {'range': range, 'interval': '1d'}  # Podemos ajustar o intervalo conforme necessário
+        endpoint = f"/{symbol}"
+        params = {'range': range, 'interval': '1d'}
         
         try:
             data = self._make_request(endpoint, params)
             
-            if 'results' in data and len(data['results']) > 0:
-                stock_data = data['results'][0]
+            if not data.get('results'):
+                raise Exception(f"Dados não encontrados para {symbol}")
                 
-                # Converte os dados para DataFrame
-                if 'historicalDataPrice' in stock_data:
-                    df = pd.DataFrame(stock_data['historicalDataPrice'])
-                    
-                    # Converte a coluna date para datetime
-                    df['date'] = pd.to_datetime(df['date'])
-                    df.set_index('date', inplace=True)
-                    
-                    # Renomeia as colunas para o padrão que usamos
-                    df = df.rename(columns={
-                        'open': 'Open',
-                        'high': 'High',
-                        'low': 'Low',
-                        'close': 'Close',
-                        'volume': 'Volume'
-                    })
-                    
-                    return df
+            stock_data = data['results'][0]
+            
+            if not stock_data.get('historicalDataPrice'):
+                raise Exception(f"Dados históricos não disponíveis para {symbol}")
                 
-            raise Exception("Dados não encontrados")
+            df = pd.DataFrame(stock_data['historicalDataPrice'])
+            
+            # Converte a coluna date para datetime
+            df['date'] = pd.to_datetime(df['date'])
+            df.set_index('date', inplace=True)
+            
+            # Renomeia as colunas para o padrão que usamos
+            df = df.rename(columns={
+                'open': 'Open',
+                'high': 'High',
+                'low': 'Low',
+                'close': 'Close',
+                'volume': 'Volume'
+            })
+            
+            # Ordena o índice em ordem crescente
+            df = df.sort_index()
+            
+            return df
             
         except Exception as e:
-            raise Exception(f"Erro ao obter dados da ação: {str(e)}")
-    
+            raise Exception(f"Erro ao obter dados da ação {symbol}: {str(e)}")
+            
     def get_available_stocks(self) -> dict:
-        """Obtém lista de ações disponíveis"""
+        """Retorna um dicionário com as ações disponíveis"""
         try:
-            data = self._make_request("/available")
+            endpoint = "/available"
+            data = self._make_request(endpoint)
             
-            stocks = {}
-            if 'stocks' in data:
-                for stock in data['stocks']:
-                    symbol = stock['stock']
-                    name = stock.get('name', symbol)
-                    stocks[symbol] = name
-            
-            return stocks
+            if not data.get('stocks'):
+                raise Exception("Lista de ações não disponível")
+                
+            # Cria um dicionário com símbolo -> nome
+            stocks_dict = {}
+            for stock in data['stocks']:
+                symbol = stock.get('stock')
+                name = stock.get('name')
+                if symbol and name:
+                    stocks_dict[symbol] = name
+                    
+            return stocks_dict
             
         except Exception as e:
-            # Fallback para lista básica em caso de erro
-            return {
-                'PETR4': 'Petrobras PN',
-                'VALE3': 'Vale ON',
-                'ITUB4': 'Itaú PN',
-                'BBDC4': 'Bradesco PN',
-                'ABEV3': 'Ambev ON',
-                'MGLU3': 'Magazine Luiza ON',
-                'WEGE3': 'WEG ON'
-            } 
+            raise Exception(f"Erro ao obter lista de ações: {str(e)}") 
