@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import ta  # Biblioteca para indicadores técnicos
 from plotly.subplots import make_subplots
+from api.brapi_provider import BrapiProvider
 
 st.set_page_config(page_title="Análise B3", layout="wide")
 
@@ -14,16 +15,15 @@ st.title("📈 Análise de Ações B3")
 # Sidebar para seleção de ações
 st.sidebar.header("Filtros")
 
-# Lista de algumas ações populares da B3
-acoes_populares = {
-    'PETR4.SA': 'Petrobras PN',
-    'VALE3.SA': 'Vale ON',
-    'ITUB4.SA': 'Itaú PN',
-    'BBDC4.SA': 'Bradesco PN',
-    'ABEV3.SA': 'Ambev ON',
-    'MGLU3.SA': 'Magazine Luiza ON',
-    'WEGE3.SA': 'WEG ON',
-}
+# Inicializa o provedor de dados
+data_provider = BrapiProvider()
+
+# Atualiza a lista de ações disponíveis
+@st.cache_data(ttl=3600)  # Cache por 1 hora
+def get_available_stocks():
+    return data_provider.get_available_stocks()
+
+acoes_populares = get_available_stocks()
 
 # Seleção da ação
 acao_selecionada = st.sidebar.selectbox(
@@ -134,32 +134,41 @@ with st.sidebar.expander("🕯️ Padrões", expanded=False):
 candle_width = 0.20  # Valor fixo para largura das velas
 candle_spacing = 0.1  # Valor fixo para espaçamento entre velas
 
-@st.cache_data
-# Função para carregar dados das ações  
+@st.cache_data(ttl=300)  # Cache por 5 minutos
 def carregar_dados(ticker, periodo, intervalo):
-    acao = yf.Ticker(ticker)
-    hist = acao.history(period=periodo, interval=intervalo)
-    
-    # Remove registros sem dados (mercado fechado)
-    hist = hist.dropna()
-    
-    # Verifica se há dados após a limpeza
-    if len(hist) == 0:
-        raise Exception("Não foi possível carregar dados para o período selecionado.")
-    
-    # Reindexa os dados para remover espaços entre os dias
-    if intervalo == '1d':
-        hist = hist.resample('D').last().dropna()
-    elif intervalo in ['5m', '15m', '1h', '3h']:
-        # Para intervalos intraday, mantém apenas os dias úteis
-        hist = hist[hist.index.dayofweek < 5]  # Remove sábados e domingos
-        hist = hist.between_time('10:00', '18:00')  # Mantém apenas horário de pregão
-    
-    # Verifica se ainda há dados após o processamento
-    if len(hist) == 0:
-        raise Exception("Não há dados disponíveis para o período e intervalo selecionados.")
-    
-    return hist, acao.info
+    """Carrega dados usando o provedor brapi"""
+    try:
+        # Converte o período do Streamlit para o formato da brapi
+        periodo_map = {
+            '1d': '1d',
+            '5d': '5d',
+            '1mo': '1mo',
+            '3mo': '3mo',
+            '6mo': '6mo',
+            '1y': '1y',
+            '2y': '2y',
+            '5y': '5y'
+        }
+        
+        brapi_range = periodo_map.get(periodo, '1mo')
+        hist = data_provider.get_stock_data(ticker, brapi_range)
+        
+        # Remove registros sem dados
+        hist = hist.dropna()
+        
+        if len(hist) == 0:
+            raise Exception("Não foi possível carregar dados para o período selecionado.")
+        
+        # Filtra apenas dias úteis e horário de pregão para dados intraday
+        if intervalo in ['5m', '15m', '1h', '3h']:
+            hist = hist[hist.index.dayofweek < 5]
+            hist = hist.between_time('10:00', '18:00')
+        
+        return hist, {}
+        
+    except Exception as e:
+        st.error(f"Erro ao carregar dados: {str(e)}")
+        return None, None
 
 @st.cache_data
 def calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd, 
