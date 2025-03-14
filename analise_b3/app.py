@@ -97,8 +97,8 @@ with st.sidebar.expander("📊 Médias Móveis", expanded=False):
 
 # Toggle para Momentum
 with st.sidebar.expander("📈 Momentum", expanded=False):
-    show_rsi = st.checkbox("RSI", value=False)
-    show_macd = st.checkbox("MACD", value=False)
+    show_rsi = st.checkbox("RSI", value=True)
+    show_macd = st.checkbox("MACD", value=True)
     if show_rsi:
         rsi_period = st.slider("Período RSI", min_value=2, max_value=30, value=14)
         rsi_overbought = st.slider("Sobrecompra", min_value=50, max_value=100, value=70)
@@ -121,7 +121,7 @@ with st.sidebar.expander("🕯️ Padrões", expanded=False):
             step=0.1,
             help="Ajusta a sensibilidade na detecção de níveis"
         )
-        show_fibonacci = st.checkbox("Mostrar Níveis de Fibonacci", value=True)
+        show_fibonacci = st.checkbox("Mostrar Níveis de Fibonacci", value=False)
         if show_fibonacci:
             fib_levels = st.multiselect(
                 "Níveis de Fibonacci",
@@ -161,12 +161,12 @@ def calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
     df = dados.copy()
     
     # Médias Móveis Simples
-    if show_sma:
+    if show_sma and sma_periods:
         for period in sma_periods:
             df[f'SMA_{period}'] = ta.trend.sma_indicator(df['Close'], window=period)
     
     # Médias Móveis Exponenciais
-    if show_ema:
+    if show_ema and ema_periods:
         for period in ema_periods:
             df[f'EMA_{period}'] = ta.trend.ema_indicator(df['Close'], window=period)
     
@@ -417,10 +417,18 @@ def calcular_score_operacao(dados):
 
 def plotar_sinais(dados):
     """Cria um gráfico com todos os sinais"""
-    fig = make_subplots(rows=3, cols=1, 
-                        shared_xaxes=True,
-                        vertical_spacing=0.05,
-                        row_heights=[0.6, 0.2, 0.2])
+    # Verificar se há indicadores para mostrar
+    tem_rsi = 'RSI' in dados.columns
+    tem_macd = 'MACD' in dados.columns
+    
+    # Criar subplots apenas se houver indicadores
+    if tem_rsi or tem_macd:
+        fig = make_subplots(rows=3, cols=1, 
+                           shared_xaxes=True,
+                           vertical_spacing=0.05,
+                           row_heights=[0.6, 0.2, 0.2])
+    else:
+        fig = go.Figure()
     
     # Gráfico principal
     fig.add_trace(go.Candlestick(
@@ -430,21 +438,23 @@ def plotar_sinais(dados):
         low=dados['Low'],
         close=dados['Close'],
         name='Preço'
-    ), row=1, col=1)
+    ), row=1 if (tem_rsi or tem_macd) else None, col=1 if (tem_rsi or tem_macd) else None)
     
     # RSI
-    fig.add_trace(go.Scatter(
-        x=dados.index,
-        y=dados['RSI'],
-        name='RSI'
-    ), row=2, col=1)
+    if tem_rsi:
+        fig.add_trace(go.Scatter(
+            x=dados.index,
+            y=dados['RSI'],
+            name='RSI'
+        ), row=2, col=1)
     
     # MACD
-    fig.add_trace(go.Scatter(
-        x=dados.index,
-        y=dados['MACD'],
-        name='MACD'
-    ), row=3, col=1)
+    if tem_macd:
+        fig.add_trace(go.Scatter(
+            x=dados.index,
+            y=dados['MACD'],
+            name='MACD'
+        ), row=3, col=1)
     
     return fig
 
@@ -452,11 +462,16 @@ try:
     # Carregando dados
     with st.spinner('Carregando dados...'):
         dados, info = carregar_dados(acao_selecionada, periodo, intervalo_velas)
-        
-    # Calculando indicadores
-    dados = calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
-                               sma_periods, ema_periods, rsi_period,
-                               macd_fast, macd_slow, macd_signal)
+    
+    # Inicializar variáveis para indicadores
+    sma_periods = [] if not show_sma else sma_periods
+    ema_periods = [] if not show_ema else ema_periods
+    
+    # Calculando indicadores apenas se algum estiver selecionado
+    if show_sma or show_ema or show_rsi or show_macd:
+        dados = calcular_indicadores(dados, show_sma, show_ema, show_rsi, show_macd,
+                                   sma_periods, ema_periods, rsi_period,
+                                   macd_fast, macd_slow, macd_signal)
     
     # Detectar padrões se estiver ativado
     if show_patterns:
@@ -490,10 +505,10 @@ try:
             f"R$ {dados['Low'].min():.2f}"
         )
 
-    # Gráfico de candlestick com indicadores
+    # Criar gráfico principal
     fig = go.Figure()
     
-    # Candlestick principal
+    # Adicionar candlestick
     fig.add_trace(go.Candlestick(
         x=dados.index,
         open=dados['Open'],
@@ -524,66 +539,71 @@ try:
         xperiod=candle_spacing
     ))
     
-    # Adicionando médias móveis
-    if show_sma:
+    # Adicionando médias móveis apenas se estiverem disponíveis
+    if show_sma and sma_periods:
         for period in sma_periods:
-            fig.add_trace(go.Scatter(
-                x=dados.index,
-                y=dados[f'SMA_{period}'],
-                name=f'SMA {period}',
-                line=dict(width=1),
-                opacity=0.7
-            ))
+            if f'SMA_{period}' in dados.columns:
+                fig.add_trace(go.Scatter(
+                    x=dados.index,
+                    y=dados[f'SMA_{period}'],
+                    name=f'SMA {period}',
+                    line=dict(width=1),
+                    opacity=0.7
+                ))
     
-    if show_ema:
+    if show_ema and ema_periods:
         for period in ema_periods:
-            fig.add_trace(go.Scatter(
-                x=dados.index,
-                y=dados[f'EMA_{period}'],
-                name=f'EMA {period}',
-                line=dict(width=1, dash='dash'),
-                opacity=0.7
-            ))
+            if f'EMA_{period}' in dados.columns:
+                fig.add_trace(go.Scatter(
+                    x=dados.index,
+                    y=dados[f'EMA_{period}'],
+                    name=f'EMA {period}',
+                    line=dict(width=1, dash='dash'),
+                    opacity=0.7
+                ))
 
-    # Adicionar suportes e resistências ao gráfico
+    # Adicionar suportes e resistências ao gráfico apenas se estiverem disponíveis
     if show_sr:
-        resistance_levels, support_levels = detectar_suportes_resistencias(dados, sensitivity)
-        
-        # Plotar níveis de resistência
-        for level in resistance_levels:
-            fig.add_hline(
-                y=level,
-                line_dash="dash",
-                line_color="red",
-                annotation_text=f"R: {level:.2f}",
-                annotation_position="right",
-                annotation_font_color="red"
-            )
-        
-        # Plotar níveis de suporte
-        for level in support_levels:
-            fig.add_hline(
-                y=level,
-                line_dash="dash",
-                line_color="green",
-                annotation_text=f"S: {level:.2f}",
-                annotation_position="right",
-                annotation_font_color="green"
-            )
-        
-        # Adicionar níveis de Fibonacci se ativado
-        if show_fibonacci:
-            fib_levels_dict = calcular_niveis_fibonacci(dados, fib_levels)
+        try:
+            resistance_levels, support_levels = detectar_suportes_resistencias(dados, sensitivity)
             
-            for level, price in fib_levels_dict.items():
+            # Plotar níveis de resistência
+            for level in resistance_levels:
                 fig.add_hline(
-                    y=price,
-                    line_dash="dot",
-                    line_color="yellow",
-                    annotation_text=f"Fib {level:.3f}: {price:.2f}",
+                    y=level,
+                    line_dash="dash",
+                    line_color="red",
+                    annotation_text=f"R: {level:.2f}",
                     annotation_position="right",
-                    annotation_font_color="yellow"
+                    annotation_font_color="red"
                 )
+            
+            # Plotar níveis de suporte
+            for level in support_levels:
+                fig.add_hline(
+                    y=level,
+                    line_dash="dash",
+                    line_color="green",
+                    annotation_text=f"S: {level:.2f}",
+                    annotation_position="right",
+                    annotation_font_color="green"
+                )
+            
+            # Adicionar níveis de Fibonacci apenas se explicitamente ativado
+            if show_fibonacci and 'fib_levels' in locals():
+                fib_levels_dict = calcular_niveis_fibonacci(dados, fib_levels)
+                
+                for level, price in fib_levels_dict.items():
+                    fig.add_hline(
+                        y=price,
+                        line_dash="dot",
+                        line_color="yellow",
+                        annotation_text=f"Fib {level:.3f}: {price:.2f}",
+                        annotation_position="right",
+                        annotation_font_color="yellow"
+                    )
+        except Exception as e:
+            st.warning(f"Não foi possível calcular suportes e resistências: {str(e)}")
     
     # Detectar padrões se estiver ativado
     if show_patterns:
@@ -783,7 +803,7 @@ try:
     if show_rsi or show_macd:
         col1, col2 = st.columns(2)
         
-        if show_rsi:
+        if show_rsi and 'RSI' in dados.columns:
             with col1:
                 fig_rsi = go.Figure()
                 fig_rsi.add_trace(go.Scatter(
@@ -802,7 +822,7 @@ try:
                 )
                 st.plotly_chart(fig_rsi, use_container_width=True)
         
-        if show_macd:
+        if show_macd and 'MACD' in dados.columns:
             with col2:
                 fig_macd = go.Figure()
                 fig_macd.add_trace(go.Scatter(

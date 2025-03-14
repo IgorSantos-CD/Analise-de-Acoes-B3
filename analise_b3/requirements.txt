@@ -1,7 +1,7 @@
-yfinance==0.2.36
-pandas==2.2.1
-numpy==1.26.4
-matplotlib==3.8.3
-plotly==5.19.0
-streamlit==1.31.1
-ta==0.11.0  # biblioteca para análise técnica 
+streamlit>=1.24.0
+yfinance>=0.2.18
+pandas>=1.5.3
+numpy>=1.24.2
+ta>=0.10.2
+plotly>=5.13.1
+matplotlib==3.8.3 
