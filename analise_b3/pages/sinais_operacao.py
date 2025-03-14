@@ -49,3 +49,15 @@ with tab3:
     
     with col2:
         atr_period = st.slider("Período ATR", 10, 30, 14)
+
+# Seleção da ação
+acoes_populares = {
+    'IBOV.SA': 'Índice Bovespa',
+    'PETR4.SA': 'Petrobras PN',
+    'VALE3.SA': 'Vale ON',
+    'ITUB4.SA': 'Itaú PN',
+    'BBDC4.SA': 'Bradesco PN',
+    'ABEV3.SA': 'Ambev ON',
+    'MGLU3.SA': 'Magazine Luiza ON',
+    'WEGE3.SA': 'WEG ON',
+}

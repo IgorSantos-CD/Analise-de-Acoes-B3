@@ -16,6 +16,7 @@ st.sidebar.header("Filtros")
 
 # Lista de algumas ações populares da B3
 acoes_populares = {
+    'IBOV.SA': 'Índice Bovespa',
     'PETR4.SA': 'Petrobras PN',
     'VALE3.SA': 'Vale ON',
     'ITUB4.SA': 'Itaú PN',
