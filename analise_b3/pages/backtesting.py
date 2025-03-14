@@ -16,7 +16,6 @@ st.sidebar.header("Configurações do Backtesting")
 
 # Seleção da ação
 acoes_populares = {
-    'IBOV.SA': 'Índice Bovespa',
     'PETR4.SA': 'Petrobras PN',
     'VALE3.SA': 'Vale ON',
     'ITUB4.SA': 'Itaú PN',
@@ -71,6 +70,21 @@ def carregar_dados(ticker, periodo):
     """Carrega dados históricos da ação"""
     acao = yf.Ticker(ticker)
     hist = acao.history(period=periodo)
+    
+    # Remove registros sem dados (mercado fechado)
+    hist = hist.dropna()
+    
+    # Verifica se há dados após a limpeza
+    if len(hist) == 0:
+        raise Exception("Não foi possível carregar dados para o período selecionado.")
+    
+    # Remove sábados e domingos
+    hist = hist[hist.index.dayofweek < 5]
+    
+    # Verifica se ainda há dados após o processamento
+    if len(hist) == 0:
+        raise Exception("Não há dados disponíveis para o período selecionado.")
+    
     return hist.dropna()
 
 @st.cache_data

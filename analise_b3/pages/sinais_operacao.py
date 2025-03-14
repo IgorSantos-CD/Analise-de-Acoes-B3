@@ -52,7 +52,6 @@ with tab3:
 
 # Seleção da ação
 acoes_populares = {
-    'IBOV.SA': 'Índice Bovespa',
     'PETR4.SA': 'Petrobras PN',
     'VALE3.SA': 'Vale ON',
     'ITUB4.SA': 'Itaú PN',

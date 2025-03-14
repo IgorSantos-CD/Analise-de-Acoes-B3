@@ -16,7 +16,6 @@ st.sidebar.header("Filtros")
 
 # Lista de algumas ações populares da B3
 acoes_populares = {
-    'IBOV.SA': 'Índice Bovespa',
     'PETR4.SA': 'Petrobras PN',
     'VALE3.SA': 'Vale ON',
     'ITUB4.SA': 'Itaú PN',
@@ -144,6 +143,10 @@ def carregar_dados(ticker, periodo, intervalo):
     # Remove registros sem dados (mercado fechado)
     hist = hist.dropna()
     
+    # Verifica se há dados após a limpeza
+    if len(hist) == 0:
+        raise Exception("Não foi possível carregar dados para o período selecionado.")
+    
     # Reindexa os dados para remover espaços entre os dias
     if intervalo == '1d':
         hist = hist.resample('D').last().dropna()
@@ -151,6 +154,10 @@ def carregar_dados(ticker, periodo, intervalo):
         # Para intervalos intraday, mantém apenas os dias úteis
         hist = hist[hist.index.dayofweek < 5]  # Remove sábados e domingos
         hist = hist.between_time('10:00', '18:00')  # Mantém apenas horário de pregão
+    
+    # Verifica se ainda há dados após o processamento
+    if len(hist) == 0:
+        raise Exception("Não há dados disponíveis para o período e intervalo selecionados.")
     
     return hist, acao.info
 
